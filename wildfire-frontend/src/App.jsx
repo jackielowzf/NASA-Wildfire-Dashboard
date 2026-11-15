@@ -21,7 +21,7 @@ function MapEvents({setBounds}) {
 
 function App() {
   const [fires, setFires] = useState([]);
-  const [selectedDate, setSelectedDate] = useState("");
+  const [selectedDate, setSelectedDate] = useState("ALL");
   const [bounds, setBounds] = useState({
     north: 90,
     south: -90,
@@ -34,7 +34,8 @@ function App() {
 
     const params = new URLSearchParams({
       ...bounds,
-      date: selectedDate
+      date: selectedDate,
+      source: selectedSource
     });
 
     fetch (`/api/fires?${params}`, {signal: controller.signal})
@@ -50,7 +51,7 @@ function App() {
       });
 
       return () => controller.abort();
-  }, [selectedDate, bounds]);
+  }, [selectedDate, bounds, selectedSource]);
 
 
   return (
@@ -64,7 +65,17 @@ function App() {
         onChange = {(e) => setSelectedDate(e.target.value)}
       />
 
-      <button onClick = {() => setSelectedDate("")}>
+      <label> Satellite Source: </label>
+      <select value={selectedSource} onChange={(e) => setSelectedSource(e.target.value)}
+      >
+      <option value="ALL">All Satellites</option>
+      <option value="MODIS">MODIS</option>
+      <option value="VIIRS">VIIRS</option>
+      </select>
+
+      <button onClick = {() => {setSelectedDate("")
+                               setSelectedSource("ALL");
+                               }}>
         Clear Filter
       </button>
       <p>Fire detections displayed: {fires.length}</p>
@@ -73,8 +84,8 @@ function App() {
         center={[45, -75]}
         zoom={4}
         style={{ height: "80vh", width: "100%" }}
-        MapEvents setBounds = {setBounds} 
       >
+        <MapEvents setBounds = {setBounds} />
         
       
         <TileLayer
@@ -92,7 +103,7 @@ function App() {
             <Popup>
               Source: {fire.source}
               <br />
-              IDetected: {fire.date}
+              Detected: {fire.date}
             </Popup>
           </CircleMarker>
         ))}

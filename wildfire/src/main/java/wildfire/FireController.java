@@ -14,9 +14,16 @@ import org.springframework.web.bind.annotation.RequestParam;
 @RestController
 public class FireController {
 	
-	@GetMapping("/api/fires")
-	public List<Fire> getFires(
-				@RequestParam(required = false) String date,
+	private final HarmonizationService harmonizationService;
+	
+	public FireController(HarmonizationService harmonizationService) {
+		this.harmonizationService = harmonizationService;
+	}
+	
+	
+	@GetMapping("/api/harmonized")
+	public List<GridCell> getHarmonizedFires(
+				@RequestParam String date,
 				@RequestParam(defaultValue = "90") double north,
 				@RequestParam(defaultValue = "-90") double south,
 				@RequestParam(defaultValue = "180") double east,
@@ -24,15 +31,12 @@ public class FireController {
 		
 		List<Fire> fires = new ArrayList<>();
 		
-		fires.addAll(readFires(
-					"modis.csv", "MODIS",
-					date, north, south, east, west));
+		fires.addAll(readFires("modis.csv", "MODIS", date, north, south, east, west, 0));
 		
-		fires.addAll(readFires(
-					"viirs.csv", "VIIRS",
-					date, north, south, east, west));
+		fires.addAll(readFires("viirs.csv", "VIIRS", date, north, south, east, west, 0));
 		
-		return fires;
+		return harmonizationService.harmonize(fires);
+		
 	}
 	
 	private List<Fire> readFires(
@@ -42,7 +46,8 @@ public class FireController {
 			double north,
 			double south,
 			double east,
-			double west) throws Exception{
+			double west,
+			int limit) throws Exception{
 		
 		List<Fire> fires = new ArrayList<>();
 		
@@ -75,7 +80,7 @@ public class FireController {
 			
 			String line;
 			
-			while ((line = reader.readLine()) != null && fires.size() < 250) {
+			while ((line = reader.readLine()) != null && fires.size() < limit) {
 				
 				String[] values = line.split(",");
 				
