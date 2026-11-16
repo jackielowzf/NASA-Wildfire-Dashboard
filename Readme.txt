@@ -1,6 +1,6 @@
 ## Live Demo
 
-[Launch FireWatch](hhttps://firewatch-p2yk.onrender.com/)
+[Launch FireWatch](https://firewatch-p2yk.onrender.com/)
 
 Note: The application is hosted on Render's free tier.
 The initial load may take approximately one minute.
