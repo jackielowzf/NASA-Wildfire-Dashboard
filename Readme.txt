@@ -1,3 +1,10 @@
+## Live Demo
+
+[Launch FireWatch](hhttps://firewatch-p2yk.onrender.com/)
+
+Note: The application is hosted on Render's free tier.
+The initial load may take approximately one minute.
+
 # FireWatch
 
 A geospatial wildfire detection and satellite data comparison dashboard powered by NASA FIRMS.
