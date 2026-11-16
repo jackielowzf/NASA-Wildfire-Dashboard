@@ -1,0 +1,12 @@
+.git
+**/node_modules
+**/dist
+**/target
+**/.metadata
+**/.settings
+**/.classpath
+**/.project
+**/.env
+**/.env.*
+**/*.launch
+wildfire/src/main/resources/static

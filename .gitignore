@@ -7,10 +7,14 @@ target/
 .settings/
 .classpath
 .project
+*.launch
 
 # React
 node_modules/
 dist/
+
+# Generated frontend
+wildfire/src/main/resources/static/
 
 # Environment variables and secrets
 .env

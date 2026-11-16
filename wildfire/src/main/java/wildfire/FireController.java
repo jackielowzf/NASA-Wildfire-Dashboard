@@ -1,107 +1,155 @@
+
 package wildfire;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.data.mongodb.core.aggregation.Aggregation;
+import org.springframework.data.mongodb.core.aggregation.ConditionalOperators;
+import org.springframework.data.domain.Sort;
+import java.util.Map;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 public class FireController {
+
+    private final HarmonizationService harmonizationService;
+    private final FireRepository fireRepository;
+    private final MongoTemplate mongoTemplate;
+    private final FireSyncService fireSyncService;
+
+    public FireController(
+            HarmonizationService harmonizationService,
+            FireRepository fireRepository,
+            MongoTemplate mongoTemplate,
+            FireSyncService fireSyncService) {
+
+        this.harmonizationService = harmonizationService;
+        this.fireRepository = fireRepository;
+        this.mongoTemplate = mongoTemplate;
+        this.fireSyncService = fireSyncService;
+    }
+
+    @GetMapping("/api/fires")
+    public List<Fire> getFires(
+            @RequestParam(required = false) String date,
+            @RequestParam(defaultValue = "90") double north,
+            @RequestParam(defaultValue = "-90") double south,
+            @RequestParam(defaultValue = "180") double east,
+            @RequestParam(defaultValue = "-180") double west,
+            @RequestParam(defaultValue = "ALL") String source) {
+
+        return queryFires(date, north, south, east, west,
+                source, 500);
+    }
+
+    @GetMapping("/api/harmonized")
+    public List<GridCell> getHarmonizedFires(
+            @RequestParam String date,
+            @RequestParam(defaultValue = "90") double north,
+            @RequestParam(defaultValue = "-90") double south,
+            @RequestParam(defaultValue = "180") double east,
+            @RequestParam(defaultValue = "-180") double west) {
+
+        List<Fire> fires = queryFires(
+                date, north, south, east, west, "ALL", 0);
+
+        return harmonizationService.harmonize(fires);
+    }
+    
+    @PostMapping("/api/sync")
+    public ResponseEntity<Map<String, String>> syncData() {
+
+        try {
+            fireSyncService.refreshIfNeeded();
+
+            return ResponseEntity.ok(
+                    Map.of("status", "ok")
+            );
+
+        } catch (Exception e) {
+
+            return ResponseEntity.status(503).body(
+                    Map.of("status", "NASA refresh unavailable")
+            );
+        }
+    }
+
+    private List<Fire> queryFires(
+            String date,
+            double north,
+            double south,
+            double east,
+            double west,
+            String source,
+            int limit) {
+
+        Query query = new Query();
+
+        query.addCriteria(
+            Criteria.where("latitude").gte(south).lte(north));
+
+        query.addCriteria(
+            Criteria.where("longitude").gte(west).lte(east));
+
+        if (date != null && !date.isBlank()) {
+            query.addCriteria(
+                Criteria.where("date").is(date));
+        }
+
+        if (!source.equals("ALL")) {
+            query.addCriteria(
+                Criteria.where("source").is(source));
+        }
+
+        if (limit > 0) {
+            query.limit(limit);
+        }
+
+        return mongoTemplate.find(query, Fire.class);
+    }
+
+    @GetMapping("/api/test-db")
+    public long testDatabase() {
+        return fireRepository.count();
+    }
+    
+
+	@GetMapping("/api/history")
+	public List<DailyStatistics> getHistory() {
 	
-	private final HarmonizationService harmonizationService;
+	    Aggregation aggregation = Aggregation.newAggregation(
 	
-	public FireController(HarmonizationService harmonizationService) {
-		this.harmonizationService = harmonizationService;
-	}
+	        Aggregation.group("date")
+	            .sum(
+	                ConditionalOperators.when(
+	                    Criteria.where("source").is("MODIS")
+	                ).then(1).otherwise(0)
+	            ).as("modisCount")
 	
+	            .sum(
+	                ConditionalOperators.when(
+	                    Criteria.where("source").is("VIIRS")
+	                ).then(1).otherwise(0)
+	            ).as("viirsCount"),
 	
-	@GetMapping("/api/harmonized")
-	public List<GridCell> getHarmonizedFires(
-				@RequestParam String date,
-				@RequestParam(defaultValue = "90") double north,
-				@RequestParam(defaultValue = "-90") double south,
-				@RequestParam(defaultValue = "180") double east,
-				@RequestParam(defaultValue = "-180") double west) throws Exception {
-		
-		List<Fire> fires = new ArrayList<>();
-		
-		fires.addAll(readFires("modis.csv", "MODIS", date, north, south, east, west, 0));
-		
-		fires.addAll(readFires("viirs.csv", "VIIRS", date, north, south, east, west, 0));
-		
-		return harmonizationService.harmonize(fires);
-		
-	}
+	        Aggregation.project("modisCount", "viirsCount")
+	            .and("_id").as("date")
+	            .andExclude("_id"),
 	
-	private List<Fire> readFires(
-			String filename, 
-			String source,
-			String date,
-			double north,
-			double south,
-			double east,
-			double west,
-			int limit) throws Exception{
-		
-		List<Fire> fires = new ArrayList<>();
-		
-		ClassPathResource resource = new ClassPathResource(filename);
-		
-		try (BufferedReader reader = new BufferedReader (
-				new InputStreamReader(
-						resource.getInputStream(),
-						StandardCharsets.UTF_8))) {
-			
-			String header = reader.readLine();
-			String[] columns = header.split(",");
-			
-			int latIndex = -1;
-			int lonIndex = -1;
-			int dateIndex = -1;
-			
-			for (int i = 0; i < columns.length; i++) {
-				String column = columns[i].trim();
-				
-				if (column.equals("latitude")) latIndex = i;
-				if (column.equals("longitude")) lonIndex = i;
-				if (column.equals("acq_date")) dateIndex = i;
-			}
-			
-			if (latIndex == -1 || lonIndex == -1 || dateIndex == -1) {
-				throw new IllegalArgumentException(
-						"Required CSV columns are missing in " + filename);
-			}
-			
-			String line;
-			
-			while ((line = reader.readLine()) != null && fires.size() < limit) {
-				
-				String[] values = line.split(",");
-				
-				double latitude = Double.parseDouble(values[latIndex]);
-				double longitude = Double.parseDouble(values[lonIndex]);
-				String fireDate = values[dateIndex].trim();
-				
-				//Date filtering
-				if (date != null && !date.isEmpty() && !fireDate.equals(date)) {
-					continue;
-				}
-				
-				// Geographic filtering
-				if (latitude > north || latitude < south || longitude > east || longitude < west) {
-					continue;
-				}
-				
-				fires.add(new Fire(latitude, longitude, fireDate, source));						
-			}
-		}
-		return fires;
+	        Aggregation.sort(Sort.Direction.ASC, "date")
+	    );
+	
+	    return mongoTemplate.aggregate(
+	        aggregation,
+	        Fire.class,
+	        DailyStatistics.class
+	    ).getMappedResults();
 	}
 }
-
